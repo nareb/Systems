@@ -155,7 +155,7 @@ void handle_client_requests(int client_sock) {
     // Check for the command type
     if (strncmp(client_message, "WRITE", 5) == 0) {
         char local_path[BUFFER_SIZE], remote_path[BUFFER_SIZE];
-                char local_path[BUFFER_SIZE], remote_path[BUFFER_SIZE];
+       
         // Extract paths from the client_message
         sscanf(client_message, "WRITE %s %s", local_path, remote_path);
         handle_write_command(client_sock, local_path, remote_path);
