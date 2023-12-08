@@ -1,12 +1,14 @@
 // server_handler.c
 
 #include "server_handler.h"
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define BUFFER_SIZE 8196
 
@@ -40,10 +42,8 @@ void handle_get_command(int client_sock, char* remote_path, char* local_path) {
     }
 
     fclose(file);
-
     printf("GET File sent to client: %s\n", local_path);
 }
-
 
 void handle_write_command(int client_sock,  char* local_path, char* remote_path)
 {
@@ -72,6 +72,7 @@ void handle_write_command(int client_sock,  char* local_path, char* remote_path)
     }
 
 
+     
      // Check if the file already exists
      if (access(remote_path, F_OK) != -1) {
         // File exists, create a new versioned filename
@@ -110,26 +111,12 @@ void handle_write_command(int client_sock,  char* local_path, char* remote_path)
 
       }
 
-    
     fclose(file);
+
 
 
     printf("WRITE Function in Server:  File received and saved as: %s\n", remote_path);
     }
-        /*else {
-        // Invalid WRITE command format
-        printf("Invalid WRITE command format\n");
-
-
-        // Respond to the client about the error
-        //char server_message[BUFFER_SIZE];
-       // strcpy(server_message, "Server encountered an error in the WRITE command format.");
-       // if (send(client_sock, server_message, strlen(server_message), 0) < 0) {
-       //     printf("Can't send response to client\n");
-       // }
-    }
-    */
-
 
 
 // Function to handle the RM command
@@ -153,3 +140,64 @@ void handle_delete_command(int client_sock, char *remote_path) {
         send(client_sock, "DELETE ERROR", sizeof("DELETE ERROR"), 0);
     }
 }
+
+
+void handle_client_requests(int client_sock) {
+    char client_message[BUFFER_SIZE];
+    ssize_t bytes_received;
+
+    // Receive the client's command
+    if ((bytes_received = recv(client_sock, client_message, sizeof(client_message), 0)) <= 0) {
+        perror("Error receiving client command");
+        return;
+    }
+
+    // Check for the command type
+    if (strncmp(client_message, "WRITE", 5) == 0) {
+        char local_path[BUFFER_SIZE], remote_path[BUFFER_SIZE];
+                char local_path[BUFFER_SIZE], remote_path[BUFFER_SIZE];
+        // Extract paths from the client_message
+        sscanf(client_message, "WRITE %s %s", local_path, remote_path);
+        handle_write_command(client_sock, local_path, remote_path);
+    } else if (strncmp(client_message, "GET", 3) == 0) {
+        char local_path[BUFFER_SIZE], remote_path[BUFFER_SIZE];
+        // Extract paths from the client_message
+        sscanf(client_message, "GET %s %s", remote_path, local_path);
+        handle_get_command(client_sock, remote_path, local_path);
+    } else if (strncmp(client_message, "RM", 2) == 0) {
+        char remote_path[BUFFER_SIZE];
+        // Extract the path from the client_message
+        sscanf(client_message + 2, "%s", remote_path);
+        handle_delete_command(client_sock, remote_path);
+    } else {
+        printf("Unexpected command: %s\n", client_message);
+        // Handle unknown command if needed
+    }
+}
+
+
+// Function to handle a client in a separate thread
+void* handle_client(void* args) {
+    struct ThreadArgs* thread_args = (struct ThreadArgs*)args;
+    int client_sock = thread_args->client_sock;
+    struct sockaddr_in client_addr = thread_args->client_addr;
+
+    // Print information about the connected client.
+    printf("Client connected at IP: %s and port: %i\n",
+           inet_ntoa(client_addr.sin_addr),
+           ntohs(client_addr.sin_port));
+
+    // Handle the client's requests using server handler functions
+    handle_client_requests(client_sock);
+
+    // Close the client socket
+    close(client_sock);
+
+    // Free the memory allocated for thread_args
+    free(thread_args);
+
+    // Exit the thread
+    pthread_exit(NULL);
+}
+
+
